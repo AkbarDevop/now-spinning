@@ -22,6 +22,9 @@ Read this first; `docs/history/` has the long Codex-era bring-up logs if you nee
 - **Taps:** `imu.cpp` (accelerometer, software tap detection) → `wirelessCommand()` → iPhone via AMS
   Remote Command, or Mac via a `command` field in the `/frame` reply → extension clicks the YT Music button.
   Double tap = next, triple tap = play/pause.
+- **Mic glow:** `audio.cpp` — ES7210 ADC (I2C 0x40, I2S slave, mono MIC1 at 16 kHz) → loudness above an adaptive
+  noise floor + gentle beat pulses → `audioGlowLevel()` → halo and rim in `drawRecord()`. Tune via `/audio`
+  (`strength` 0–100, `gain` 0–14, `glow` on/off); the speaker amp (GPIO 11) is held off.
 - **Rendering:** `album_display.ino` loop (core 1) alone owns the HUB75 DMA buffers; network/artwork/gesture
   tasks on core 0 publish complete frames through a mutex-protected PSRAM mailbox.
   Idle 5 min → clock; 23:00–07:00 → brightness 16 (dark when idle). Day brightness 40/255.
@@ -34,6 +37,7 @@ Read this first; `docs/history/` has the long Codex-era bring-up logs if you nee
 ./matrix flash --usb    # rescue path over USB (app partition only); add --full on a brand-new board
 ./matrix status         # Wi-Fi, iPhone, cover source, taps, memory
 ./matrix demo clock     # preview idle screens for 60 s (clock | dark | dim | off)
+./matrix audio --strength 55   # mic glow status / tuning (--gain 0-14, --glow on|off)
 ./matrix test           # host-side unit tests (needs .venv with pyserial)
 ./matrix helper         # reinstall the Mac helper after editing companion/bridge.py
 ```
@@ -47,6 +51,8 @@ Read this first; `docs/history/` has the long Codex-era bring-up logs if you nee
 - USB not detected → hold BOOT, tap RESET, release BOOT.
 - Internal RAM is tight (~20 KB free with BLE + Wi-Fi + TLS). TLS allocations are redirected to PSRAM;
   put any new big buffer in PSRAM (`ps_malloc`) and check `./matrix status` memory after changes.
+  The audio and gesture task stacks live in PSRAM (`xTaskCreatePinnedToCoreWithCaps`) and I2S DMA is 768 B;
+  the first mic build without that dropped free internal RAM to ~10 KB and broke cover downloads.
 - During OTA the network task is blocked inside `ArduinoOTA.handle()`; the renderer shows a progress bar.
 - Flicker fix: 300 Hz driver scan, buffer-reuse fence (`frame_timing.h`), never redraw a settled paused frame.
 - iPhone pairing lives in NVS (NimBLE store). If it ever breaks: iPhone Settings → Bluetooth → Forget
@@ -58,6 +64,6 @@ Read this first; `docs/history/` has the long Codex-era bring-up logs if you nee
 
 ## Status (Sept 24, 2026)
 Working and verified on hardware: Wi-Fi OTA, iPhone auto-reconnect after power cycle, Deezer covers,
-per-song art, tap routing to phone and Mac, night mode + idle clock.
-Next ideas: mic-reactive edge glow (watch internal RAM), printed frame + wall mount, portfolio write-up
-with a demo video and measured numbers.
+per-song art, tap routing to phone and Mac, night mode + idle clock, sound-reactive glow.
+Next ideas: alarm clock (sunrise glow + speaker chime, tap to snooze), clap-to-wake, printed frame + stand,
+portfolio write-up with a demo video and measured numbers.

@@ -13,6 +13,8 @@ It follows YouTube Music on a Mac and on an iPhone. Once it's set up, the iPhone
 - **iPhone:** pairs over Bluetooth Low Energy (Apple Media Service), gets the title and artist, and looks the cover
   up online (Apple Music catalog, then Deezer). With no match, it draws a vinyl colored from the song's name.
 - **Tap the frame:** double tap = next track, triple tap = play/pause. The tap goes to whichever device is playing.
+- **Sound-reactive glow:** the board's two built-in mics listen to the room, and the disc's rim softly glows and
+  pulses with the music on your speakers. Tune it live with `./matrix audio --strength 0-100` (default 55).
 - **Idle clock and night mode:** a quiet clock appears after 5 minutes without music. From 11 pm to 7 am the display
   dims, and it goes fully dark when idle at night.
 - **Wi-Fi firmware updates** after the first USB flash (`./matrix flash`).

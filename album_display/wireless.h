@@ -14,6 +14,10 @@ bool wirelessCommand(uint8_t command); // routes to the Mac (via helper) or the 
 bool phoneCommand(uint8_t command);   // AMS remote command (3 = next, 2 = play/pause)
 void gestureBegin();
 void gestureDiagnostics(char *output, size_t capacity);
+void audioBegin();                              // onboard mics -> sound-reactive glow
+uint8_t audioGlowLevel();                       // 0..255
+void audioConfigure(int gain, int glow, int strength);  // -1 leaves a setting unchanged
+void audioDiagnostics(char *output, size_t capacity);
 int wirelessOtaProgress();
 void phoneBegin();
 void phoneTick();

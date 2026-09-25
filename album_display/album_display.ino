@@ -27,6 +27,7 @@ float angle = 0, speed = 0;
 uint32_t lastBufferSwapUs=0, bufferHoldUs=0;
 uint32_t profileMinGap=UINT32_MAX, profileMaxDraw=0, profileReport=0, profileFrames=0;
 bool stationaryFrameDrawn=false;
+float renderedGlow=0;
 uint32_t renderedArtworkCRC=0;
 char songTitle[61] = "";
 uint32_t lastPlayingAt = 0; uint8_t currentBrightness = 0; int idleShown = -1;
@@ -148,13 +149,18 @@ RGB sample(const uint16_t *image, float x, float y) {
              mix(unpack(image[y1*64+x0]),unpack(image[y1*64+x1]),x-x0),y-y0);
 }
 // Picture disc: artwork printed across the record, with a real dark hole.
-void drawRecord(float fade, RGB tint) {
+void drawRecord(float fade, RGB tint, float glow=0) {
   float c=cosf(angle), s=sinf(angle);
   RGB edgeTint=mix({100,110,120},tint,0.18f);
   for(int y=0;y<64;y++) for(int x=0;x<64;x++) {
     const DiscGeometry &g=discGeometry[y*64+x];
     float dx=x-CX, dy=y-CY, r=g.radius;
-    if(r>DISC_RADIUS || r<HOLE_RADIUS) continue;
+    if(r<HOLE_RADIUS) continue;
+    if(r>DISC_RADIUS) {
+      // Sound-reactive halo just outside the disc, in the cover's color.
+      if(glow>0.01f && r<DISC_RADIUS+7) panel->drawPixel(x,y,color(tint,glow*0.7f*expf(-(r-DISC_RADIUS)/2.2f)));
+      continue;
+    }
     float light=g.light;
     RGB p={7,10,14};
     if(r<=ART_RADIUS) {
@@ -175,9 +181,9 @@ void drawRecord(float fade, RGB tint) {
       }
       p=mix({0,0,0},p,fminf(1,(r-HOLE_RADIUS)*2));
     } else {
-      // Thin material edge, with a brighter upper-left bevel rather than a halo.
-      float gain=g.edgeGain;
-      p={edgeTint.r*gain,edgeTint.g*gain,edgeTint.b*gain};
+      // Thin material edge; the sound glow lights it up in the cover's color.
+      float gain=g.edgeGain+glow*0.6f; RGB e=mix(edgeTint,tint,glow);
+      p={fminf(255,e.r*gain),fminf(255,e.g*gain),fminf(255,e.b*gain)};
     }
     panel->drawPixel(x,y,color(p));
   }
@@ -277,11 +283,15 @@ void loop() {
   angle=fmodf(angle+speed*dt,2*PI);
   float fade=fminf(1,(now-transitionStart)/900.0f); fade=fade*fade*(3-2*fade);
   bool stationary=haveArtwork && speed==0 && fade>=1;
-  if(stationary && stationaryFrameDrawn && renderedArtworkCRC==artworkCRC) return;
+  float glowNow=0;
+#ifndef MATRIX_NATIVE_TEST
+  glowNow=audioGlowLevel()/255.0f;   // room loudness/beat from the onboard mics
+#endif
+  if(stationary && stationaryFrameDrawn && renderedArtworkCRC==artworkCRC && glowNow<0.02f && renderedGlow<0.02f) return;
   RGB tint=mix(previousAccent,accent,fade);
   uint32_t drawStart=micros();
   profileMinGap=min(profileMinGap,drawStart-lastBufferSwapUs);
-  panel->fillScreen(0); drawRecord(fade,tint); panel->flipDMABuffer();
+  panel->fillScreen(0); drawRecord(fade,tint,glowNow); panel->flipDMABuffer();
   lastBufferSwapUs=micros(); profileMaxDraw=max(profileMaxDraw,lastBufferSwapUs-drawStart);
-  stationaryFrameDrawn=stationary; renderedArtworkCRC=artworkCRC; ++profileFrames;
+  stationaryFrameDrawn=stationary; renderedArtworkCRC=artworkCRC; renderedGlow=glowNow; ++profileFrames;
 }

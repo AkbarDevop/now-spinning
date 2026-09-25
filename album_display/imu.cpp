@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include <atomic>
 #include <math.h>
+#include <freertos/idf_additions.h>
 
 namespace {
 uint8_t imuAddr = 0;
@@ -84,7 +85,8 @@ void gestureBegin() {
   writeReg(0x03, 0x14);                           // CTRL2: accel +-4 g, 500 Hz
   writeReg(0x08, 0x01);                           // CTRL7: accelerometer on
   imuState = 1;
-  xTaskCreatePinnedToCore(gestureTask, "matrix-gesture", 4096, nullptr, 2, nullptr, 0);
+  // Stack in PSRAM: internal RAM is reserved for Wi-Fi, Bluetooth and TLS.
+  xTaskCreatePinnedToCoreWithCaps(gestureTask, "matrix-gesture", 4096, nullptr, 2, nullptr, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   Serial.printf("IMU ready at 0x%02X\n", imuAddr);
 }
 

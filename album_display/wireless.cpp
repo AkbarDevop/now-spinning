@@ -88,6 +88,15 @@ void networkTask(void*){
   if(!authorized()){server.send(403,"text/plain","Not paired");return;}
   char status[1536];wirelessStatus(status,sizeof(status));server.send(200,"application/json",status);
  });
+ server.on("/audio",HTTP_GET,[]{
+  if(!authorized()){server.send(403,"text/plain","Not paired");return;}
+  int gain=server.hasArg("gain")?server.arg("gain").toInt():-1;
+  int glow=server.hasArg("glow")?int(server.arg("glow")=="on"||server.arg("glow")=="1"):-1;
+  int strength=server.hasArg("strength")?server.arg("strength").toInt():-1;
+  audioConfigure(gain,glow,strength);
+  char d[160];audioDiagnostics(d,sizeof(d));JsonDocument r;r["audio"]=d;String out;serializeJson(r,out);
+  server.send(200,"application/json",out);
+ });
  server.on("/demo",HTTP_GET,[]{
   if(!authorized()){server.send(403,"text/plain","Not paired");return;}
   String m=server.arg("mode");int s=server.hasArg("seconds")?constrain(server.arg("seconds").toInt(),5,600):60;
@@ -316,6 +325,7 @@ void wirelessBegin(){
  xTaskCreatePinnedToCore(networkTask,"matrix-network",8192,nullptr,1,nullptr,0);
  xTaskCreatePinnedToCore(artworkTask,"matrix-artwork",12288,nullptr,1,nullptr,0);
  gestureBegin();
+ audioBegin();
 }
 bool wirelessOtaActive(){return otaActive;}
 int wirelessDemoMode(){int m=demoMode.load();return m&&int32_t(millis()-demoUntil.load())<0?m:0;}
@@ -344,6 +354,7 @@ void wirelessStatus(char *out,size_t capacity){
  doc["ota"]=otaActive?"updating":"ready";
  char phoneState[192];phoneDiagnostics(phoneState,sizeof(phoneState));doc["phone_debug"]=phoneState;
  char gesture[160];gestureDiagnostics(gesture,sizeof(gesture));doc["gesture"]=gesture;
+ char audio[160];audioDiagnostics(audio,sizeof(audio));doc["audio"]=audio;
  serializeJson(doc,out,capacity);
 }
 void wirelessPhoneState(bool connected,bool play,const char *t,const char *a,const char *al){

@@ -8,6 +8,7 @@
   ./matrix flash --usb --full   first flash of a brand-new board (bootloader + partitions + app)
   ./matrix status         show what the display is doing (Wi-Fi, phone, cover, taps)
   ./matrix demo clock     preview the idle clock for 60 s (also: dark, dim, off)
+  ./matrix audio          mic glow status; --strength 0-100, --gain 0-14 (10 = 30 dB), --glow on|off
   ./matrix test           run the host-side unit tests
   ./matrix helper         (re)install the Mac helper that feeds YouTube Music frames
 
@@ -148,7 +149,7 @@ def status(args):
             ('Wi-Fi', f"{s.get('wifi')}  {s.get('ip')}"),
             ('iPhone', f"{'connected' if s.get('phone_connected') else 'not connected'}, {'playing' if s.get('phone_playing') else 'paused'}"),
             ('Track', f"{s.get('phone_title')} - {s.get('phone_artist')}" if s.get('phone_title') else '-'),
-            ('Cover', s.get('artwork')), ('Taps', s.get('gesture')), ('BLE', s.get('phone_debug')),
+            ('Cover', s.get('artwork')), ('Taps', s.get('gesture')), ('Mic', s.get('audio')), ('BLE', s.get('phone_debug')),
             ('Memory', f"internal {s.get('free_heap', 0):,} B free (largest {s.get('largest_block', 0):,}), PSRAM {s.get('free_psram', 0):,} B")]
     for label, value in rows:
         print(f'{label:>9}  {value}')
@@ -180,6 +181,15 @@ def demo(args):
         print(response.read().decode())
 
 
+def audio(args):
+    host = display_host(args.host)
+    query = '&'.join(f'{k}={v}' for k, v in (('gain', args.gain), ('glow', args.glow), ('strength', args.strength)) if v is not None)
+    request = urllib.request.Request(f'http://{host}:18766/audio?{query}', headers={'X-Matrix-Token': token()})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=4) as response:
+        print(json.loads(response.read()).get('audio'))
+
+
 def python_with_serial():
     for candidate in (ROOT / '.venv/bin/python', Path(sys.executable)):
         if candidate.exists() and subprocess.run([str(candidate), '-c', 'import serial'], capture_output=True).returncode == 0:
@@ -209,6 +219,9 @@ def main():
     d = sub.add_parser('demo'); d.add_argument('mode', choices=['clock', 'dark', 'dim', 'off'])
     d.add_argument('--seconds', type=int, default=60); d.add_argument('--host'); d.set_defaults(run=demo)
     s = sub.add_parser('status'); s.add_argument('--json', action='store_true'); s.add_argument('--host'); s.set_defaults(run=status)
+    a = sub.add_parser('audio'); a.add_argument('--gain', type=int, choices=range(15), metavar='0-14')
+    a.add_argument('--glow', choices=['on', 'off']); a.add_argument('--strength', type=int, choices=range(101), metavar='0-100')
+    a.add_argument('--host'); a.set_defaults(run=audio)
     sub.add_parser('test').set_defaults(run=test)
     sub.add_parser('helper').set_defaults(run=helper)
     args = parser.parse_args()
