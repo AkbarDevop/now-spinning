@@ -1,0 +1,16 @@
+{
+  "shape": "circle",
+  "border": "material-edge",
+  "rpm": 4,
+  "rim": 1.25,
+  "halo": 0,
+  "palette": "auto",
+  "footer": "none",
+  "name": "AKBAR",
+  "arm": false,
+  "spindle": false,
+  "style": "picture-disc",
+  "centerHoleRadius": 3.5,
+  "grooves": "subtle",
+  "surfaceReflection": "subtle"
+}

@@ -1,0 +1,15 @@
+backups/
+build/
+secrets.h
+.DS_Store
+companion/pairing-token.txt
+extension/pairing.js
+__pycache__/
+companion/device.json
+companion/logs/
+build/
+**/build/
+.venv/
+album_display/build_info.h
+*.bin
+*.elf

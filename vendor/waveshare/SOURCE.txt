@@ -1,0 +1,3 @@
+https://github.com/waveshareteam/ESP32-S3-RGB-Matrix
+Commit: 4047e4e7e13b043ae9ddd4daaeff5582de044c80
+Original example: example/arduino_v3.3.7/01_SimpleTestShapes/

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Akbar Music Matrix",
+  "version": "0.1.0",
+  "description": "Send the current YouTube Music artwork to your own USB LED matrix.",
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://yt3.googleusercontent.com/*",
+    "https://lh3.googleusercontent.com/*",
+    "https://i.ytimg.com/*",
+    "https://*.ggpht.com/*"
+  ],
+  "background": {"service_worker": "background.js"},
+  "content_scripts": [{"matches": ["https://music.youtube.com/*"], "js": ["content.js"]}],
+  "action": {"default_title": "Music Matrix", "default_popup": "popup.html"}
+}

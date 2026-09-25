@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""matrix - build, flash and check the Akbar Matrix display.
+
+  ./matrix init           create your private pairing token (first time only)
+  ./matrix build          compile the firmware into build/album_display/
+  ./matrix flash          build, then install over Wi-Fi (OTA). The normal path.
+  ./matrix flash --usb    install over USB instead (app only; keeps Wi-Fi + iPhone pairing)
+  ./matrix flash --usb --full   first flash of a brand-new board (bootloader + partitions + app)
+  ./matrix status         show what the display is doing (Wi-Fi, phone, cover, taps)
+  ./matrix demo clock     preview the idle clock for 60 s (also: dark, dim, off)
+  ./matrix test           run the host-side unit tests
+  ./matrix helper         (re)install the Mac helper that feeds YouTube Music frames
+
+Add --no-build to flash an existing build, --host IP to override the display address.
+"""
+import argparse
+import glob
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+HOME = Path.home()
+CORE = HOME / 'Library/Arduino15/packages/esp32/hardware/esp32/3.3.7'
+ARDUINO_CLI = '/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli'
+ESPOTA = CORE / 'tools/espota.py'
+ESPTOOL = HOME / 'Library/Arduino15/packages/esp32/tools/esptool_py/5.1.0/esptool'
+# The chip reports octal flash/PSRAM in eFuse; the generic vendor screenshot (QIO) is wrong for this board.
+FQBN = ('esp32:esp32:esp32s3:FlashSize=32M,FlashMode=opi,PSRAM=opi,'
+        'PartitionScheme=app5M_fat24M_32MB,USBMode=hwcdc,CDCOnBoot=cdc')
+SKETCH = ROOT / 'album_display'
+OUT = ROOT / 'build/album_display'
+BIN = OUT / 'album_display.ino.bin'
+HELPER_DIR = HOME / 'Library/Application Support/Akbar Matrix'
+LAUNCH_LABEL = 'one.akbar.music-matrix'
+
+
+def env():
+    e = dict(os.environ)
+    e.setdefault('TMPDIR', '/tmp/')  # arduino-cli's ctags fails when TMPDIR is unset
+    if not e['TMPDIR']:
+        e['TMPDIR'] = '/tmp/'
+    return e
+
+
+def token():
+    return (ROOT / 'companion/pairing-token.txt').read_text().strip()
+
+
+def display_host(override=None):
+    if override:
+        return override
+    for path in (HELPER_DIR / 'companion/device.json', ROOT / 'companion/device.json'):
+        try:
+            ip = json.loads(path.read_text()).get('ip')
+            if ip:
+                return ip
+        except (OSError, ValueError):
+            pass
+    return 'akbar-matrix.local'
+
+
+def status_json(host, timeout=4):
+    request = urllib.request.Request(f'http://{host}:18766/status', headers={'X-Matrix-Token': token()})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def git_build_id():
+    try:
+        rev = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(['git', 'status', '--porcelain', '--', 'album_display'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        return rev + ('-dirty' if dirty else '')
+    except (OSError, subprocess.CalledProcessError):
+        return 'dev'
+
+
+def build(_args=None):
+    build_id = f'{git_build_id()} {time.strftime("%Y-%m-%d %H:%M")}'
+    (SKETCH / 'build_info.h').write_text(f'#pragma once\n#define MATRIX_BUILD "{build_id}"\n')
+    print(f'Building firmware {build_id} ...', flush=True)
+    subprocess.run([ARDUINO_CLI, 'compile', '--fqbn', FQBN, '--library', str(ROOT / 'vendor/waveshare'),
+                    '--build-property', 'compiler.cpp.extra_flags=-DPIXEL_COLOR_DEPTH_BITS=6',
+                    '--output-dir', str(OUT), str(SKETCH)], check=True, env=env())
+    print(f'Built {BIN.relative_to(ROOT)} ({BIN.stat().st_size:,} bytes)')
+
+
+def flash_ota(host):
+    print(f'Installing over Wi-Fi to {host} (the panel shows a progress bar) ...', flush=True)
+    subprocess.run([sys.executable, str(ESPOTA), '-i', host, '-p', '3232', '-a', token(),
+                    '-f', str(BIN), '-r', '-t', '30'], check=True)
+
+
+def flash_usb(full=False):
+    ports = sorted(glob.glob('/dev/cu.usbmodem*'))
+    if len(ports) != 1:
+        raise SystemExit('Plug the Mac into the board\'s data USB-C port (not POWER). '
+                         'If it is not detected: hold BOOT, tap RESET, release BOOT.')
+    domain = f'gui/{os.getuid()}'
+    # The helper could open the serial port mid-upload; opening it resets the ESP32-S3.
+    subprocess.run(['launchctl', 'bootout', f'{domain}/{LAUNCH_LABEL}'], capture_output=True)
+    try:
+        if full:
+            # Brand-new board: bootloader, partition table (two OTA slots) and app.
+            subprocess.run([ARDUINO_CLI, 'upload', '--fqbn', FQBN, '--port', ports[0],
+                            '--input-dir', str(OUT), str(SKETCH)], check=True, env=env())
+        else:
+            # App partition only: keeps NVS (Wi-Fi credentials, iPhone bond). watchdog-reset
+            # avoids the S3 staying in ROM download mode after a plain hard reset.
+            subprocess.run([str(ESPTOOL), '--chip', 'esp32s3', '--port', ports[0], '--baud', '460800',
+                            '--before', 'default-reset', '--after', 'watchdog-reset',
+                            'write-flash', '0x10000', str(BIN)], check=True, env=env())
+    finally:
+        plist = HOME / f'Library/LaunchAgents/{LAUNCH_LABEL}.plist'
+        if plist.exists():
+            subprocess.run(['launchctl', 'bootstrap', domain, str(plist)], capture_output=True)
+    print('Done. Unplug the USB data cable for normal use.')
+
+
+def flash(args):
+    if not args.no_build or not BIN.exists():
+        build()
+    host = display_host(args.host)
+    flash_usb(args.full) if args.usb else flash_ota(host)
+    print('Waiting for the display to come back ...', flush=True)
+    for _ in range(30):
+        time.sleep(2)
+        try:
+            s = status_json(host)
+            if s.get('uptime_s', 999) < 90:
+                print(f"Running {s.get('firmware')}  (Wi-Fi {s.get('wifi')}, phone connected: {s.get('phone_connected')})")
+                return
+        except (OSError, ValueError):
+            pass
+    print('Display did not report back within 60 s; try ./matrix status')
+
+
+def status(args):
+    s = status_json(display_host(args.host))
+    if args.json:
+        print(json.dumps(s, indent=2)); return
+    rows = [('Firmware', s.get('firmware')), ('Uptime', f"{s.get('uptime_s')} s  (boot #{s.get('boot_count')}, last reset: {s.get('reset_reason')})"),
+            ('Wi-Fi', f"{s.get('wifi')}  {s.get('ip')}"),
+            ('iPhone', f"{'connected' if s.get('phone_connected') else 'not connected'}, {'playing' if s.get('phone_playing') else 'paused'}"),
+            ('Track', f"{s.get('phone_title')} - {s.get('phone_artist')}" if s.get('phone_title') else '-'),
+            ('Cover', s.get('artwork')), ('Taps', s.get('gesture')), ('BLE', s.get('phone_debug')),
+            ('Memory', f"internal {s.get('free_heap', 0):,} B free (largest {s.get('largest_block', 0):,}), PSRAM {s.get('free_psram', 0):,} B")]
+    for label, value in rows:
+        print(f'{label:>9}  {value}')
+
+
+def init(_args):
+    import secrets as pysecrets
+    files = {'album_display/secrets.h': '#pragma once\n#define MATRIX_TOKEN "{t}"\n',
+             'companion/pairing-token.txt': '{t}\n',
+             'extension/pairing.js': 'const MATRIX_TOKEN = "{t}";\n'}
+    present = [f for f in files if (ROOT / f).exists()]
+    if len(present) == len(files):
+        print('Already initialized: your pairing token exists (kept unchanged).'); return
+    if present:
+        raise SystemExit(f'Only some secret files exist ({", ".join(present)}); fix or remove them first.')
+    t = pysecrets.token_urlsafe(32)
+    for name, template in files.items():
+        path = ROOT / name; path.write_text(template.format(t=t)); path.chmod(0o600)
+    print('Created a private pairing token in album_display/secrets.h, companion/pairing-token.txt '
+          'and extension/pairing.js (all gitignored).')
+
+
+def demo(args):
+    host = display_host(args.host)
+    request = urllib.request.Request(f'http://{host}:18766/demo?mode={args.mode}&seconds={args.seconds}',
+                                     headers={'X-Matrix-Token': token()})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=4) as response:
+        print(response.read().decode())
+
+
+def python_with_serial():
+    for candidate in (ROOT / '.venv/bin/python', Path(sys.executable)):
+        if candidate.exists() and subprocess.run([str(candidate), '-c', 'import serial'], capture_output=True).returncode == 0:
+            return str(candidate)
+    raise SystemExit('pyserial is missing: python3 -m venv .venv && .venv/bin/pip install pyserial')
+
+
+def test(_args):
+    py = python_with_serial()
+    ok = subprocess.run([py, '-m', 'unittest', 'discover', '-s', 'tests'], cwd=ROOT, env=env()).returncode == 0
+    ok &= subprocess.run([py, '-m', 'unittest', 'test_bridge'], cwd=ROOT / 'companion', env=env()).returncode == 0
+    raise SystemExit(0 if ok else 1)
+
+
+def helper(_args):
+    subprocess.run([python_with_serial(), str(ROOT / 'companion/install_autostart.py')], check=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest='command', required=True)
+    sub.add_parser('init').set_defaults(run=init)
+    sub.add_parser('build').set_defaults(run=build)
+    f = sub.add_parser('flash'); f.add_argument('--usb', action='store_true'); f.add_argument('--no-build', action='store_true')
+    f.add_argument('--full', action='store_true', help='with --usb: also write bootloader + partition table')
+    f.add_argument('--host'); f.set_defaults(run=flash)
+    d = sub.add_parser('demo'); d.add_argument('mode', choices=['clock', 'dark', 'dim', 'off'])
+    d.add_argument('--seconds', type=int, default=60); d.add_argument('--host'); d.set_defaults(run=demo)
+    s = sub.add_parser('status'); s.add_argument('--json', action='store_true'); s.add_argument('--host'); s.set_defaults(run=status)
+    sub.add_parser('test').set_defaults(run=test)
+    sub.add_parser('helper').set_defaults(run=helper)
+    args = parser.parse_args()
+    args.run(args)
+
+
+if __name__ == '__main__':
+    main()
