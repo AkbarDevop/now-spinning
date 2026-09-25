@@ -13,3 +13,5 @@ build/
 album_display/build_info.h
 *.bin
 *.elf
+build-flash.log
+*.log
