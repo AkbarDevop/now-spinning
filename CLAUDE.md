@@ -1,4 +1,4 @@
-# Akbar Matrix — context for AI assistants
+# Now Spinning — context for AI assistants
 
 A 64×64 LED "picture disc" that spins the cover of whatever Akbar is playing:
 YouTube Music on the Mac (Chrome extension) or on the iPhone (Bluetooth, Apple Media Service).

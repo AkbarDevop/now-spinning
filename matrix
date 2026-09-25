@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""matrix - build, flash and check the Akbar Matrix display.
+"""matrix - build, flash and check the Now Spinning display.
 
   ./matrix init           create your private pairing token (first time only)
   ./matrix build          compile the firmware into build/album_display/

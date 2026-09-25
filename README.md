@@ -1,9 +1,12 @@
-# Akbar Matrix
+# Now Spinning
 
 A 64×64 LED display that spins the album cover of whatever you're playing, like a picture-disc vinyl.
 It follows YouTube Music on a Mac and on an iPhone. Once it's set up, the iPhone side works without the Mac.
 
-<!-- Photos and a demo video coming soon. -->
+<p align="center">
+  <img src="docs/images/picture-disc-night.jpg" width="48%" alt="An album cover spinning as a picture disc on the LED panel">
+  <img src="docs/images/first-light.jpg" width="48%" alt="First light: the test animation on the 64x64 panel">
+</p>
 
 ## Features
 - **Mac:** a small Chrome extension reads the YouTube Music player and sends the real thumbnail over Wi-Fi.
@@ -14,6 +17,12 @@ It follows YouTube Music on a Mac and on an iPhone. Once it's set up, the iPhone
   dims, and it goes fully dark when idle at night.
 - **Wi-Fi firmware updates** after the first USB flash (`./matrix flash`).
 - **Smooth:** 30 fps rendering with a 300 Hz panel scan and no flicker, while HTTPS and Bluetooth run alongside.
+
+<p align="center">
+  <img src="docs/images/sim-song-art-and-clock.jpg" width="80%" alt="Generated song art when no cover exists, and the idle clock">
+  <br><sub>Generated art for a song with no catalog cover (left), and the idle clock (right).
+  Both are rendered from the firmware's own drawing code.</sub>
+</p>
 
 ## Bill of materials
 Prices as of September 2026, before tax.
@@ -29,6 +38,8 @@ Prices as of September 2026, before tax.
 Optional: a 3D-printed frame and stand (design coming), and black LED diffuser acrylic cut to 192 mm.
 
 ## Assembly (no soldering)
+<img src="docs/images/assembly-back.jpg" width="45%" align="right" alt="Back of the panel with the controller on the JIN header">
+
 1. Press the controller's female HUB75 socket **directly onto the panel's `JIN` header**. You don't need the ribbon
    cable, and `JOUT` stays empty.
 2. Screw the panel's power lead into the controller terminals: red → `5V`, black → `GND`.
@@ -44,7 +55,7 @@ Optional: a 3D-printed frame and stand (design coming), and black LED diffuser a
    python3 -m venv .venv && .venv/bin/pip install pyserial
    ```
 3. Not in US Central time? Change `MATRIX_TZ` in `album_display/wireless.cpp`. Night hours are at the top of
-   `album_display/album_display.ino`, and the Bluetooth name ("Akbar Matrix") is in `album_display/phone.cpp`.
+   `album_display/album_display.ino`, and the Bluetooth name (default "Akbar Matrix") is in `album_display/phone.cpp`.
 4. **First flash:** connect the Mac to the board's data port, then run `./matrix flash --usb --full`.
    (Optional: back up the factory firmware first with `esptool read-flash`.)
 5. **Mac helper + Wi-Fi:** run `./matrix helper`, open <http://127.0.0.1:18765/setup>, and enter your **2.4 GHz** Wi-Fi.
@@ -53,7 +64,16 @@ Optional: a 3D-printed frame and stand (design coming), and black LED diffuser a
    then refresh YouTube Music.
 7. **iPhone:** in [nRF Connect](https://apps.apple.com/us/app/nrf-connect-for-mobile/id1054362403), scan for the display,
    tap Connect, and accept pairing. Do this once. iOS reconnects by itself after that, even after power cuts.
-8. From then on, run `./matrix flash` to update over Wi-Fi and `./matrix status` to see what it's doing.
+8. From then on, run `./matrix flash` to update over Wi-Fi and `./matrix status` to see what it's doing:
+   ```text
+    Firmware  55b400f 2026-09-24 22:27
+      Uptime  30 s  (boot #8, last reset: software)
+       Wi-Fi  Connected  192.168.1.50
+      iPhone  connected, playing
+       Cover  Matched cover (Deezer)
+        Taps  imu=1 taps=12 double=4 triple=1 rejected=0 peak_mg=433 last_cmd=3 sent=1
+   ```
+   Preview the idle screens any time with `./matrix demo clock` (or `dark`, `dim`).
 
 ## How it works
 - `album_display/`: firmware. The render loop (core 1) alone owns the HUB75 DMA buffers. The Wi-Fi, artwork, Bluetooth
